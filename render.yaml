@@ -17,3 +17,5 @@ services:
         value: /app/data/api-keys.json
       - key: MAX_QUANTIDADE
         value: "30"
+      - key: CORS_ORIGIN
+        value: https://oicanji.github.io
