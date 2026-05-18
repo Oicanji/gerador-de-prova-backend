@@ -19,3 +19,5 @@ services:
         value: "30"
       - key: CORS_ORIGIN
         value: https://oicanji.github.io
+      - key: STATIC_API_KEY
+        sync: false

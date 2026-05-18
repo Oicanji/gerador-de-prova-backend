@@ -14,6 +14,7 @@ module.exports = {
     process.env.CORS_ORIGIN !== undefined && String(process.env.CORS_ORIGIN).trim() !== ""
       ? String(process.env.CORS_ORIGIN).trim()
       : "https://oicanji.github.io",
+  staticApiKey: process.env.STATIC_API_KEY ? String(process.env.STATIC_API_KEY).trim() : "",
   projectRoot,
   latexDir: path.join(projectRoot, "assets", "latex"),
   recursosDir: path.join(projectRoot, "assets", "recursos"),

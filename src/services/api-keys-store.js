@@ -86,7 +86,12 @@ function validateApiKey(rawKey) {
   if (!rawKey || typeof rawKey !== "string") {
     return false;
   }
-  const h = hashKey(rawKey.trim());
+  const trimmed = rawKey.trim();
+  const staticKey = config.staticApiKey && String(config.staticApiKey).trim();
+  if (staticKey && trimmed === staticKey) {
+    return true;
+  }
+  const h = hashKey(trimmed);
   const store = readStore();
   const now = new Date().toISOString();
   for (const item of store.keys) {
