@@ -203,11 +203,33 @@ function isQuestionBlock(block) {
   return true;
 }
 
+function mergePrQuestionContinuationBlocks(blocks) {
+  const merged = [];
+  for (const block of blocks) {
+    const t = String(block || "").trim();
+    if (!t) {
+      continue;
+    }
+    const hasPergunta = /^\s*pergunta\s*:/im.test(t);
+    const startsWithContinuation = /^\s*(tipo|opcoes|combinacoes|coluna_direita|direita|linhas|resposta|eh_opcional|apenas_renderizar_sozinha|peso|foto_enunciado|encadeia_com)\s*:/im.test(
+      t
+    );
+    if (merged.length > 0 && !hasPergunta && startsWithContinuation) {
+      merged[merged.length - 1] = `${merged[merged.length - 1]}\n\n${t}`;
+    } else {
+      merged.push(t);
+    }
+  }
+  return merged;
+}
+
 function parseSourceDocument(markdownContent) {
-  const blocks = markdownContent
-    .split(/\r?\n\s*\r?\n/g)
-    .map(normalizeBlock)
-    .filter(Boolean);
+  const blocks = mergePrQuestionContinuationBlocks(
+    markdownContent
+      .split(/\r?\n\s*\r?\n/g)
+      .map(normalizeBlock)
+      .filter(Boolean)
+  );
 
   let meta = {};
   let startIdx = 0;
