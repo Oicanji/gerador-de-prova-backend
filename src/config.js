@@ -10,7 +10,10 @@ module.exports = {
   apiKeysFile: path.resolve(projectRoot, process.env.API_KEYS_FILE || "./data/api-keys.json"),
   maxQuantidade: Number.parseInt(process.env.MAX_QUANTIDADE || "30", 10),
   jobTtlMs: Number.parseInt(process.env.JOB_TTL_MS || String(60 * 60 * 1000), 10),
-  corsOrigin: process.env.CORS_ORIGIN || "",
+  corsOrigin:
+    process.env.CORS_ORIGIN !== undefined && String(process.env.CORS_ORIGIN).trim() !== ""
+      ? String(process.env.CORS_ORIGIN).trim()
+      : "https://oicanji.github.io",
   projectRoot,
   latexDir: path.join(projectRoot, "assets", "latex"),
   recursosDir: path.join(projectRoot, "assets", "recursos"),
