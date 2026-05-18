@@ -1,0 +1,96 @@
+\ProvidesPackage{UTFPR}
+\usepackage[brazil]{babel}
+%\usepackage[latin1]{inputenc}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{amssymb,amsthm,amsmath}
+\usepackage{amsfonts}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage[export]{adjustbox}
+\usepackage{listings}
+
+\pagestyle{headandfoot}
+\setcounter{page}{1}
+\pagenumbering{arabic}
+\makeatletter
+\newcommand{\TotalPaginasSeguro}{%
+  \@ifundefined{exam@lastpage}{%
+    \begingroup\normalfont\bfseries ??\endgroup
+  }{%
+    \exam@lastpage
+  }%
+}
+\makeatother
+\firstpageheader{}{}{}
+\runningheader{}{}{}
+\firstpagefooter{}{Página \thepage\ / \TotalPaginasSeguro}{}
+\runningfooter{}{Página \thepage\ / \TotalPaginasSeguro}{}
+
+% ==============Espacamento e Layout=======================
+\setlength{\topmargin}{-2cm}
+\setlength{\topskip}{-.2cm}    % between header and text
+\setlength{\textheight}{26cm} % height of main text
+\setlength{\textwidth}{19.5cm}    % width of text
+\setlength{\oddsidemargin}{-1.79cm} % odd page left margin (A4 centralizado)
+\setlength{\evensidemargin}{-1.79cm} % even page left margin (A4 centralizado)
+%............................................................
+\linespread{1}
+% ===========================================================================-
+
+\newcolumntype{x}[1]{%
+>{\centering\hspace{0pt}}p{#1}}%
+
+\newcommand{\nomeProfessor}[1]{
+\newcommand{\professor}{#1}
+}
+
+\newcommand{\nomeCurso}[1]{
+\newcommand{\curso}{#1}
+}
+
+\newcommand{\nomeDisciplina}[1]{
+\newcommand{\disciplina}{#1}
+}
+
+\newcommand{\semestre}[1]{
+\newcommand{\periodo}{#1}
+}
+
+\newcommand{\dataDaProva}[1]{
+\newcommand{\data}{#1}
+}
+
+\newcommand{\tipoAvaliacao}[1]{
+\newcommand{\avaliacao}{#1}
+}
+
+\newcommand{\info}{
+\begin{center}
+\begin{figure}
+
+  \begin{tabular}[t]{c x{10cm} c}
+  \centering
+    \multirow{3}{*}{} & { \bf Ministério da Educação}  & \multirow{3}{*}{\begingroup\graphicspath{{../recursos/}{../../../recursos/}{../../../../../recursos/}}\includegraphics[width=0.35\textwidth]{ifsc-logo.png}\endgroup}  \\
+                                                                       &  { \bf Instituto Federal de Santa Catarina}  &  \\
+                                                                       &  { Câmpus Garopaba}      & \\
+  \end{tabular}
+\end{figure}
+
+\begin{table}[h] \small
+\begin{tabular}{|p{0.11\textwidth}|p{0.45\textwidth}|p{0.14\textwidth}|p{0.23\textwidth}|}
+\hline
+  \multicolumn{4}{|l|}{\bf Acadêmico(a):}     \\ \hline
+{\bf Curso}      & \curso       & {\bf{Semestre:} \periodo}       &  \data                      \\ \hline
+{\bf Disciplina} & \multicolumn{2}{l|}{\disciplina}     & \multirow{3}{*}{\bf Nota da Avaliação:} \\ \cline{1-3}
+{\bf Professor}  & \multicolumn{2}{l|}{\professor} &       \\ \cline{1-3}
+\multicolumn{3}{|c|}{{\bf \avaliacao}}        &       \scriptsize Rúbrica do Professor               \\ \hline
+\multicolumn{4}{|l|}{Orientações gerais:} \\
+\multicolumn{4}{|l|}{\scriptsize 1 - \textbf{DESLIGUE E GUARDE O CELULAR}. Preencha seu nome aqui e na folha pautada.}\\
+\multicolumn{4}{|l|}{\scriptsize 2 - A interpretação das questões é parte do processo de avaliação, não sendo permitidas consultas ou comunicação entre alunos.}     \\\hline
+\end{tabular}
+\end{table}
+\end{center}
+}

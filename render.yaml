@@ -1,0 +1,19 @@
+# Blueprint Render: ajuste rootDir se o servico nao estiver na pasta deste arquivo.
+services:
+  - type: web
+    name: gerador-de-prova-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: WORK_DIR
+        value: /tmp/gerador-prova-work
+      - key: API_KEYS_FILE
+        value: /app/data/api-keys.json
+      - key: MAX_QUANTIDADE
+        value: "30"

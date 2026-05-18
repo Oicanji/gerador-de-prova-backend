@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gerador de Prova — Admin</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 1.25rem;
+      line-height: 1.5;
+      background: #f5f5f5;
+      color: #333;
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 0.5rem; }
+    .card {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    label { display: block; margin-bottom: 0.35rem; font-size: 0.9rem; color: #555; }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      margin-bottom: 0.75rem;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      border: 1px solid #ff7a00;
+      background: #ff7a00;
+      color: #fff;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    button.secondary {
+      background: #fff;
+      color: #c45a00;
+    }
+    button.danger {
+      border-color: #c44;
+      background: #fff;
+      color: #a00;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #eee; }
+    .hidden { display: none; }
+    .alert {
+      padding: 0.65rem 0.85rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+    .alert.ok { background: #f0fff4; border: 1px solid #3a9e5a; color: #2a7a45; }
+    .alert.err { background: #fff5f5; border: 1px solid #c44; color: #a00; }
+    .key-once {
+      font-family: Consolas, monospace;
+      word-break: break-all;
+      background: #fff7f0;
+      border: 1px solid #ff7a00;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+    }
+    .meta { color: #666; font-size: 0.85rem; }
+    .row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Gerador de Prova — Chaves API</h1>
+  <p class="meta">Usuario: <strong>adm</strong>. Chaves em <code>data/api-keys.json</code>.</p>
+
+  <div id="alertBox" class="alert hidden"></div>
+
+  <section id="loginSection" class="card">
+    <h2>Entrar</h2>
+    <label for="usuario">Usuario</label>
+    <input id="usuario" type="text" value="adm" autocomplete="username">
+    <label for="senha">Senha</label>
+    <input id="senha" type="password" autocomplete="current-password">
+    <button type="button" id="btnLogin">Entrar</button>
+  </section>
+
+  <section id="panelSection" class="hidden">
+    <div class="card">
+      <h2>Nova chave</h2>
+      <label for="label">Rotulo (opcional)</label>
+      <input id="label" type="text" placeholder="ex.: editor-pr">
+      <button type="button" id="btnCreate">Gerar chave</button>
+    </div>
+    <div id="newKeyBox" class="card hidden">
+      <h2>Chave criada (copie agora)</h2>
+      <div id="newKeyValue" class="key-once"></div>
+      <p class="meta">Esta chave nao sera exibida novamente.</p>
+    </div>
+
+    <div class="card">
+      <div class="row-head">
+        <h2 style="margin:0;">Chaves</h2>
+        <button type="button" class="secondary" id="btnLogout">Sair</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Prefixo</th>
+            <th>Rotulo</th>
+            <th>Criada</th>
+            <th>Ultimo uso</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="keysBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <script src="/admin.js"></script>
+</body>
+</html>
