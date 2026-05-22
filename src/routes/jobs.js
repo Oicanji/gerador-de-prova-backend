@@ -49,6 +49,9 @@ function startJobProcessing(job, quantidade, originalName) {
     updateJob(job.id, { status: "processing" });
     try {
       const prPath = path.join(job.jobDir, "input.pr");
+      if (!fs.existsSync(prPath)) {
+        throw new Error(`Arquivo .pr nao encontrado: ${prPath}`);
+      }
       const prBuffer = fs.readFileSync(prPath);
       const result = await runGenerationJob({
         prBuffer,
@@ -183,6 +186,10 @@ router.post("/jobs/:jobId/upload/finish", requireApiKey, (req, res) => {
     assembleUploadedPr(job.jobDir, job.uploadPrSize || 0);
   } catch (e) {
     return res.status(400).json({ error: e.message || String(e) });
+  }
+  const inputPr = path.join(job.jobDir, "input.pr");
+  if (!fs.existsSync(inputPr)) {
+    return res.status(500).json({ error: "Falha ao gravar input.pr apos o upload." });
   }
   updateJob(job.id, { status: "queued", uploadPrSize: null });
   startJobProcessing(job, job.quantidade, job.originalName);

@@ -33,21 +33,14 @@ function assembleUploadedPr(jobDir, expectedSize) {
       throw new Error(`Falta o chunk ${i}.`);
     }
   }
-  const dest = path.join(jobDir, "input.pr");
-  const out = fs.createWriteStream(dest);
-  let written = 0;
-  for (const idx of indices) {
-    const part = fs.readFileSync(uploadChunkPath(jobDir, idx));
-    written += part.length;
-    out.write(part);
-  }
-  out.end();
+  const parts = indices.map((idx) => fs.readFileSync(uploadChunkPath(jobDir, idx)));
+  const buffer = Buffer.concat(parts);
+  const written = buffer.length;
   if (expectedSize > 0 && written !== expectedSize) {
-    try {
-      fs.unlinkSync(dest);
-    } catch (_) {}
     throw new Error(`Tamanho do arquivo (${written}) difere do esperado (${expectedSize}).`);
   }
+  const dest = path.join(jobDir, "input.pr");
+  fs.writeFileSync(dest, buffer);
   try {
     fs.rmSync(dir, { recursive: true, force: true });
   } catch (_) {}
