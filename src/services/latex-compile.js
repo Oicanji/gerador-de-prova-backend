@@ -62,7 +62,13 @@ function compileTexToPdf(texPath) {
     try {
       execFileSync(
         "latexmk",
-        ["-pdf", "-interaction=nonstopmode", "-halt-on-error", base],
+        [
+          "-pdf",
+          "-interaction=nonstopmode",
+          "-halt-on-error",
+          "-jobname=" + jobname,
+          base
+        ],
         opts
       );
     } catch (e) {

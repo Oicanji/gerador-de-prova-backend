@@ -4,6 +4,42 @@ const { generateProvasToOutput } = require("../generate/generate-provas");
 const { compileTexToPdf } = require("./latex-compile");
 const { mergePdfsEmUm } = require("./merge-pdfs");
 
+const COMPILE_CONCURRENCY = Math.max(
+  1,
+  Math.min(4, Number.parseInt(process.env.COMPILE_CONCURRENCY || "2", 10) || 2)
+);
+
+async function compileGeneratedPdfsParallel(generated, outputDir, onProgress) {
+  const total = generated.length;
+  const pdfPaths = new Array(total);
+  let done = 0;
+  let nextIndex = 0;
+
+  async function compileOne() {
+    for (;;) {
+      const i = nextIndex;
+      nextIndex += 1;
+      if (i >= total) {
+        return;
+      }
+      const item = generated[i];
+      const texPath = path.join(outputDir, `${item.examName}.tex`);
+      pdfPaths[i] = compileTexToPdf(texPath);
+      done += 1;
+      if (onProgress) {
+        onProgress({ phase: "compile", current: done, total });
+      }
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(COMPILE_CONCURRENCY, total) },
+    () => compileOne()
+  );
+  await Promise.all(workers);
+  return pdfPaths;
+}
+
 async function runGenerationJob({
   prBuffer,
   outputDir,
@@ -22,16 +58,7 @@ async function runGenerationJob({
     gerarGabarito
   });
 
-  const pdfPaths = [];
-  for (let i = 0; i < generated.length; i += 1) {
-    const item = generated[i];
-    if (onProgress) {
-      onProgress({ phase: "compile", current: i + 1, total: generated.length });
-    }
-    const texPath = path.join(outputDir, `${item.examName}.tex`);
-    const pdfPath = compileTexToPdf(texPath);
-    pdfPaths.push(pdfPath);
-  }
+  const pdfPaths = await compileGeneratedPdfsParallel(generated, outputDir, onProgress);
 
   if (onProgress) {
     onProgress({ phase: "merge", current: generated.length, total: generated.length });
