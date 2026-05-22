@@ -174,13 +174,31 @@ router.put("/jobs/:jobId/upload/:chunkIndex", requireApiKey, uploadChunkBody, (r
   return res.status(204).end();
 });
 
+function finishUploadResponse(job, extra) {
+  return {
+    jobId: job.id,
+    status: job.status,
+    quantidade: job.quantidade,
+    ...extra
+  };
+}
+
 router.post("/jobs/:jobId/upload/finish", requireApiKey, (req, res) => {
   const job = getJob(req.params.jobId);
   if (!job) {
     return res.status(404).json({ error: "Job nao encontrado." });
   }
+  if (job.status === "queued") {
+    return res.status(200).json(finishUploadResponse(job, { alreadyFinished: true }));
+  }
+  if (job.status === "processing" || job.status === "completed") {
+    return res.status(200).json(finishUploadResponse(job, { alreadyFinished: true }));
+  }
+  if (job.status === "failed") {
+    return res.status(500).json({ error: job.error || "Falha na geracao." });
+  }
   if (job.status !== "uploading") {
-    return res.status(409).json({ error: "Job nao aceita finalizar upload.", status: job.status });
+    return res.status(409).json({ error: "Estado invalido para finalizar upload.", status: job.status });
   }
   try {
     assembleUploadedPr(job.jobDir, job.uploadPrSize || 0);
@@ -192,12 +210,33 @@ router.post("/jobs/:jobId/upload/finish", requireApiKey, (req, res) => {
     return res.status(500).json({ error: "Falha ao gravar input.pr apos o upload." });
   }
   updateJob(job.id, { status: "queued", uploadPrSize: null });
+  const updated = getJob(job.id);
+  return res.status(200).json(finishUploadResponse(updated));
+});
+
+router.post("/jobs/:jobId/start", requireApiKey, (req, res) => {
+  const job = getJob(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({ error: "Job nao encontrado." });
+  }
+  if (job.status === "processing" || job.status === "completed") {
+    return res.status(200).json({ jobId: job.id, status: job.status, alreadyStarted: true });
+  }
+  if (job.status === "failed") {
+    return res.status(500).json({ error: job.error || "Falha na geracao." });
+  }
+  if (job.status === "uploading") {
+    return res.status(409).json({ error: "Finalize o upload antes de iniciar.", status: job.status });
+  }
+  if (job.status !== "queued") {
+    return res.status(409).json({ error: "Job nao pode ser iniciado.", status: job.status });
+  }
+  const inputPr = path.join(job.jobDir, "input.pr");
+  if (!fs.existsSync(inputPr)) {
+    return res.status(500).json({ error: "Arquivo input.pr ausente." });
+  }
   startJobProcessing(job, job.quantidade, job.originalName);
-  return res.status(202).json({
-    jobId: job.id,
-    status: "queued",
-    quantidade: job.quantidade
-  });
+  return res.status(202).json({ jobId: job.id, status: "queued" });
 });
 
 router.post("/jobs", requireApiKey, upload.single("file"), (req, res) => {
