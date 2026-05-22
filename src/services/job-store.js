@@ -2,18 +2,14 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { v4: uuidv4 } = require("uuid");
 const config = require("../config");
-
-const jobs = new Map();
-let workerBusy = false;
-const queue = [];
+const { persistJob, loadJobFromDisk } = require("./job-persistence");
 
 function createJob({
   quantidade,
   originalName,
   randomizarOrdem = true,
   gerarGabarito = true,
-  status = "queued",
-  uploadPrSize = null
+  status = "queued"
 }) {
   const jobId = uuidv4();
   const jobDir = path.join(config.workDir, "jobs", jobId);
@@ -24,7 +20,6 @@ function createJob({
     quantidade,
     randomizarOrdem,
     gerarGabarito,
-    uploadPrSize,
     originalName: originalName || "upload.pr",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -33,47 +28,27 @@ function createJob({
     result: null,
     jobDir
   };
-  jobs.set(jobId, job);
+  persistJob(job);
   return job;
 }
 
 function getJob(jobId) {
-  return jobs.get(jobId) || null;
+  return loadJobFromDisk(jobId);
 }
 
 function updateJob(jobId, patch) {
-  const job = jobs.get(jobId);
+  const job = loadJobFromDisk(jobId);
   if (!job) {
     return null;
   }
   Object.assign(job, patch, { updatedAt: new Date().toISOString() });
+  persistJob(job);
   return job;
-}
-
-function enqueueWorker(task) {
-  queue.push(task);
-  setImmediate(() => {
-    void drainQueue();
-  });
-}
-
-async function drainQueue() {
-  if (workerBusy || queue.length === 0) {
-    return;
-  }
-  workerBusy = true;
-  const task = queue.shift();
-  try {
-    await task();
-  } finally {
-    workerBusy = false;
-    drainQueue();
-  }
 }
 
 function scheduleCleanup(jobId) {
   setTimeout(() => {
-    const job = jobs.get(jobId);
+    const job = loadJobFromDisk(jobId);
     if (!job) {
       return;
     }
@@ -83,7 +58,6 @@ function scheduleCleanup(jobId) {
       } catch {
       }
     }
-    jobs.delete(jobId);
   }, config.jobTtlMs);
 }
 
@@ -91,7 +65,5 @@ module.exports = {
   createJob,
   getJob,
   updateJob,
-  enqueueWorker,
-  scheduleCleanup,
-  jobs
+  scheduleCleanup
 };
