@@ -44,6 +44,23 @@ function jobNotReady(res, job) {
   return null;
 }
 
+const generationScheduled = new Set();
+
+function deferGeneration(jobId) {
+  if (generationScheduled.has(jobId)) {
+    return;
+  }
+  generationScheduled.add(jobId);
+  setImmediate(() => {
+    generationScheduled.delete(jobId);
+    const job = getJob(jobId);
+    if (!job || job.status !== "queued") {
+      return;
+    }
+    startJobProcessing(job, job.quantidade, job.originalName);
+  });
+}
+
 function startJobProcessing(job, quantidade, originalName) {
   enqueueWorker(async () => {
     updateJob(job.id, { status: "processing" });
@@ -189,7 +206,9 @@ router.post("/jobs/:jobId/upload/finish", requireApiKey, (req, res) => {
     return res.status(404).json({ error: "Job nao encontrado." });
   }
   if (job.status === "queued") {
-    return res.status(200).json(finishUploadResponse(job, { alreadyFinished: true }));
+    res.status(202).json(finishUploadResponse(job, { accepted: true, alreadyFinished: true }));
+    deferGeneration(job.id);
+    return;
   }
   if (job.status === "processing" || job.status === "completed") {
     return res.status(200).json(finishUploadResponse(job, { alreadyFinished: true }));
@@ -210,8 +229,9 @@ router.post("/jobs/:jobId/upload/finish", requireApiKey, (req, res) => {
     return res.status(500).json({ error: "Falha ao gravar input.pr apos o upload." });
   }
   updateJob(job.id, { status: "queued", uploadPrSize: null });
-  const updated = getJob(job.id);
-  return res.status(200).json(finishUploadResponse(updated));
+  const payload = finishUploadResponse(getJob(job.id), { accepted: true });
+  res.status(202).json(payload);
+  deferGeneration(job.id);
 });
 
 router.post("/jobs/:jobId/start", requireApiKey, (req, res) => {
@@ -235,8 +255,8 @@ router.post("/jobs/:jobId/start", requireApiKey, (req, res) => {
   if (!fs.existsSync(inputPr)) {
     return res.status(500).json({ error: "Arquivo input.pr ausente." });
   }
-  startJobProcessing(job, job.quantidade, job.originalName);
-  return res.status(202).json({ jobId: job.id, status: "queued" });
+  res.status(202).json({ jobId: job.id, status: "accepted", alreadyStarted: false });
+  deferGeneration(job.id);
 });
 
 router.post("/jobs", requireApiKey, upload.single("file"), (req, res) => {
@@ -281,13 +301,12 @@ router.post("/jobs", requireApiKey, upload.single("file"), (req, res) => {
   const job = createJob({ quantidade, originalName, randomizarOrdem, gerarGabarito });
   const prPath = path.join(job.jobDir, "input.pr");
   fs.writeFileSync(prPath, req.file.buffer);
-  startJobProcessing(job, quantidade, originalName);
-
-  return res.status(202).json({
+  res.status(202).json({
     jobId: job.id,
-    status: "queued",
+    status: "accepted",
     quantidade
   });
+  deferGeneration(job.id);
 });
 
 router.get("/jobs/:jobId", requireApiKey, (req, res) => {

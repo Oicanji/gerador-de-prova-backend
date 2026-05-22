@@ -52,7 +52,9 @@ function updateJob(jobId, patch) {
 
 function enqueueWorker(task) {
   queue.push(task);
-  drainQueue();
+  setImmediate(() => {
+    void drainQueue();
+  });
 }
 
 async function drainQueue() {
