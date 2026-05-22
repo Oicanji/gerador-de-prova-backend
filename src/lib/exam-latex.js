@@ -381,13 +381,15 @@ function buildQuestionTex(q, pesoResolved, questionNum) {
     const discLabel = `prova-disc-${questionNum}`;
     const stemBodyDisc = texPerguntaComPeso(q.pergunta, pesoResolved, "0.28em");
     const stemFmtDisc = `{${STEM_BODY_FONT_CMD}\\bfseries\n${stemBodyDisc}\n}`;
+    const linhas = Math.max(1, Number.parseInt(String(q.linhas), 10) || 3);
+    const resp = buildDiscursiveResponseAreaTex(linhas, !!q.discursiva_em_colunas);
     return [
       `\\question ${stemFmtDisc}\\par`,
       foto,
       `\\label{${discLabel}}`,
       STEM_TO_BODY_VSPACE_DISC,
       "\\noindent\\begin{minipage}{\\linewidth}",
-      `\\espacodiscursivo{${q.linhas}}`,
+      resp,
       "\\par",
       "\\end{minipage}",
       "\\vspace{0.22\\baselineskip}%\n"
@@ -415,8 +417,12 @@ function isPairableObjective(q) {
   return q.tipo === "multipla-escolha" || q.tipo === "verdadeiro_falso" || q.tipo === "relacionar";
 }
 
-function isPairableDiscursive(q) {
-  return q.tipo === "discursiva" && q.discursiva_em_colunas;
+function buildDiscursiveResponseAreaTex(linhas, duasColunas) {
+  const n = Math.max(1, linhas);
+  if (duasColunas) {
+    return `\\espacodiscursivoduascolunas{${n}}`;
+  }
+  return `\\espacodiscursivo{${n}}`;
 }
 
 function canPairAt(i, orderedQuestions) {
@@ -427,22 +433,6 @@ function canPairAt(i, orderedQuestions) {
   const q0 = orderedQuestions[i];
   const q1 = orderedQuestions[i + 1];
   if (!isPairableObjective(q0) || !isPairableObjective(q1)) {
-    return false;
-  }
-  if (q0.apenas_renderizar_sozinha || q1.apenas_renderizar_sozinha) {
-    return false;
-  }
-  return true;
-}
-
-function canPairDiscursiveAt(i, orderedQuestions) {
-  const n = orderedQuestions.length;
-  if (i >= n - 1) {
-    return false;
-  }
-  const q0 = orderedQuestions[i];
-  const q1 = orderedQuestions[i + 1];
-  if (!isPairableDiscursive(q0) || !isPairableDiscursive(q1)) {
     return false;
   }
   if (q0.apenas_renderizar_sozinha || q1.apenas_renderizar_sozinha) {
@@ -472,49 +462,6 @@ function buildManualObjectiveColumnTex(q, pesoResolved, questionNum) {
     return [...open, "\\par", STEM_TO_BODY_VSPACE, buildRelacionarBlock(q, { narrow: true })].join("\n");
   }
   throw new Error(`Tipo manual nao suportado: ${q.tipo}`);
-}
-
-function buildManualDiscursiveColumnTex(q, pesoResolved, questionNum) {
-  const discLabel = `prova-disc-${questionNum}`;
-  const stemBody = texPerguntaComPeso(q.pergunta, pesoResolved, "0.28em");
-  const stemFmt = `{${STEM_BODY_FONT_CMD}\\bfseries\n${stemBody}\n}`;
-  const foto = buildFotoEnunciadoTex(q);
-  return [
-    MC_COL_TOP_SKIP,
-    "\\noindent",
-    "\\addtocounter{numquestions}{1}%",
-    "\\refstepcounter{question}%",
-    `\\label{question@${questionNum}}%`,
-    `\\noindent\\textbf{\\thequestion.}\\hspace{0.35em}${stemFmt}`,
-    foto ? `\\par\n${foto}` : "",
-    `\\label{${discLabel}}`,
-    STEM_TO_BODY_VSPACE_DISC,
-    "\\noindent\\begin{minipage}{\\linewidth}",
-    `\\espacodiscursivo{${q.linhas}}`,
-    "\\par",
-    "\\end{minipage}"
-  ]
-    .filter((s) => s !== "")
-    .join("\n");
-}
-
-function buildPairedDiscursiveMulticolBlock(q1, w1, n1, q2, w2, n2, addHruleAfter) {
-  const col1 = buildManualDiscursiveColumnTex(q1, w1, n1);
-  const col2 = buildManualDiscursiveColumnTex(q2, w2, n2);
-  const lines = [
-    PAIR_MULTICOL_NEEDSPACE,
-    "\\noindent\\begin{paracol}{2}%",
-    col1,
-    "",
-    "\\switchcolumn",
-    "",
-    col2,
-    "\\end{paracol}"
-  ];
-  if (addHruleAfter) {
-    lines.push("\\SeparadorEntreQuestoesLargas");
-  }
-  return lines.join("\n");
 }
 
 function buildPairedMulticolBlock(q1, w1, n1, q2, w2, n2, addHruleAfter) {
@@ -548,9 +495,6 @@ function buildQuestionsRowsTex(orderedQuestions, weightsResolved) {
     if (q.tipo === "texto-imagem") {
       chunks.push({ type: "block", i0: i });
       i += 1;
-    } else if (canPairDiscursiveAt(i, orderedQuestions)) {
-      chunks.push({ type: "pair_disc", i0: i, i1: i + 1 });
-      i += 2;
     } else if (canPairAt(i, orderedQuestions)) {
       chunks.push({ type: "pair", i0: i, i1: i + 1 });
       i += 2;
@@ -584,13 +528,13 @@ function buildQuestionsRowsTex(orderedQuestions, weightsResolved) {
     const singleParaPar =
       k > 0 &&
       (chunks[k - 1].type === "single" || chunks[k - 1].type === "block") &&
-      (ch.type === "pair" || ch.type === "pair_disc");
+      ch.type === "pair";
     if (k > 0) {
       const prev = chunks[k - 1];
       if (ch.type === "block" || prev.type === "block") {
         parts.push(gapEntreLargas);
       } else if (!singleParaPar) {
-        const ambosPar = (prev.type === "pair" || prev.type === "pair_disc") && (ch.type === "pair" || ch.type === "pair_disc");
+        const ambosPar = prev.type === "pair" && ch.type === "pair";
         const ambasOrfas = prev.type === "single" && ch.type === "single";
         if (ambosPar) {
           parts.push(gapAposParAntesPar);
@@ -608,39 +552,24 @@ function buildQuestionsRowsTex(orderedQuestions, weightsResolved) {
       continue;
     }
 
-    if (ch.type === "pair" || ch.type === "pair_disc") {
+    if (ch.type === "pair") {
       closeQuestionsIfOpen(singleParaPar);
       const n1 = examNumByIndex.get(ch.i0);
       const n2 = examNumByIndex.get(ch.i1);
       const nextCh = k + 1 < chunks.length ? chunks[k + 1] : null;
-      const addHruleAposMulticolPar =
-        nextCh != null && (nextCh.type === "pair" || nextCh.type === "pair_disc");
+      const addHruleAposMulticolPar = nextCh != null && nextCh.type === "pair";
       parts.push(`\\setcounter{question}{${lastQuestionNum}}%\n`);
-      if (ch.type === "pair_disc") {
-        parts.push(
-          buildPairedDiscursiveMulticolBlock(
-            orderedQuestions[ch.i0],
-            weightsResolved[ch.i0],
-            n1,
-            orderedQuestions[ch.i1],
-            weightsResolved[ch.i1],
-            n2,
-            addHruleAposMulticolPar
-          )
-        );
-      } else {
-        parts.push(
-          buildPairedMulticolBlock(
-            orderedQuestions[ch.i0],
-            weightsResolved[ch.i0],
-            n1,
-            orderedQuestions[ch.i1],
-            weightsResolved[ch.i1],
-            n2,
-            addHruleAposMulticolPar
-          )
-        );
-      }
+      parts.push(
+        buildPairedMulticolBlock(
+          orderedQuestions[ch.i0],
+          weightsResolved[ch.i0],
+          n1,
+          orderedQuestions[ch.i1],
+          weightsResolved[ch.i1],
+          n2,
+          addHruleAposMulticolPar
+        )
+      );
       lastQuestionNum = n2;
       continue;
     }
@@ -878,6 +807,28 @@ function buildExamLatex({
     "    \\advance\\@tempcnta\\@ne",
     "    \\linharesposta",
     "  }%",
+    "}",
+    "\\newcommand{\\espacodiscursivoduascolunas}[1]{%",
+    "  \\vspace{0.2em}%",
+    `  \\noindent{${DOC_AUX_FONT_CMD}\\textbf{R:}}\\par`,
+    "  \\nobreak",
+    "  \\vspace{0.1\\baselineskip}%",
+    "  \\noindent\\begin{minipage}[t]{0.47\\linewidth}%",
+    "  \\@tempcnta=1\\relax",
+    "  \\@whilenum\\@tempcnta<#1\\do{%",
+    "    \\advance\\@tempcnta\\@ne",
+    "    \\linharesposta",
+    "  }%",
+    "  \\end{minipage}%",
+    "  \\hspace{0.06\\linewidth}%",
+    "  \\begin{minipage}[t]{0.47\\linewidth}%",
+    "  \\@tempcnta=1\\relax",
+    "  \\@whilenum\\@tempcnta<#1\\do{%",
+    "    \\advance\\@tempcnta\\@ne",
+    "    \\linharesposta",
+    "  }%",
+    "  \\end{minipage}%",
+    "  \\par",
     "}",
     "\\makeatother",
     "",
