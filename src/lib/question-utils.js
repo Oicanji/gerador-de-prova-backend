@@ -10,8 +10,13 @@ function isScorableQuestion(q) {
   return isExamQuestion(q);
 }
 
+function isEncadeavelQuestion(q) {
+  return q && !isTextoImagemTipo(q.tipo);
+}
+
 module.exports = {
   isTextoImagemTipo,
   isExamQuestion,
-  isScorableQuestion
+  isScorableQuestion,
+  isEncadeavelQuestion
 };

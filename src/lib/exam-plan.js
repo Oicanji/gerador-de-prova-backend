@@ -1,16 +1,17 @@
 const { shuffleInPlace, sampleK } = require("./rng");
 const { normalizeWeights } = require("./weights");
-const { isScorableQuestion } = require("./question-utils");
+const { isScorableQuestion, isEncadeavelQuestion } = require("./question-utils");
 const { buildEncadeamentoAdjacency, normalizeEncadeiaRef } = require("./encadeamento-graph");
 const { EncadeamentoBatchCycler } = require("./encadeamento-cycler");
 
 function filterPoolAfterEncadeamento(allQuestions, rng, encadeamentoCycler) {
+  const byId = new Map(allQuestions.map((q) => [q.id, q]));
   const adj = buildEncadeamentoAdjacency(allQuestions);
   const excluded = new Set();
   const visited = new Set();
   const encadeamentoEscolhas = {};
   for (const q of allQuestions) {
-    if (visited.has(q.id)) {
+    if (!isEncadeavelQuestion(q) || visited.has(q.id)) {
       continue;
     }
     const stack = [q.id];
@@ -21,7 +22,7 @@ function filterPoolAfterEncadeamento(allQuestions, rng, encadeamentoCycler) {
       compIds.push(id);
       const nbs = adj.get(id) || [];
       for (const nb of nbs) {
-        if (!visited.has(nb)) {
+        if (!visited.has(nb) && isEncadeavelQuestion(byId.get(nb))) {
           visited.add(nb);
           stack.push(nb);
         }

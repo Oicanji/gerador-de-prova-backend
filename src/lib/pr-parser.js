@@ -83,10 +83,11 @@ function splitOpcoes(line) {
 }
 
 function isPrBlock(block) {
+  const t = String(block || "").trim();
   return (
-    /^\s*pergunta\s*:/im.test(block) ||
-    /^\s*tipo\s*:\s*texto/im.test(block) ||
-    /^\s*tipo\s*:\s*bloco/im.test(block)
+    /^\s*pergunta\s*:/im.test(t) ||
+    /^\s*tipo\s*:/im.test(t) ||
+    /^\s*foto_enunciado\s*:/im.test(t)
   );
 }
 
@@ -108,6 +109,36 @@ function parsePrFields(block) {
   for (const k of Object.keys(fields)) {
     fields[k] = fields[k].trim();
   }
+  return fields;
+}
+
+const PR_EMBEDDED_LINE_RE =
+  /^\s*(encadeia_com|eh_opcional|apenas_renderizar_sozinha|peso|linhas|resposta|opcoes|combinacoes|foto_enunciado|tipo|discursiva_em_colunas|coluna_direita|direita)\s*:/i;
+
+function repairPrFields(fields) {
+  if (fields.tipo && /\r?\n/.test(fields.tipo)) {
+    const tipoLines = fields.tipo.split(/\r?\n/);
+    fields.tipo = tipoLines[0].trim();
+    const extra = tipoLines.slice(1).join("\n").trim();
+    if (extra) {
+      fields.pergunta = fields.pergunta ? `${extra}\n${fields.pergunta}` : extra;
+    }
+  }
+  const perguntaLines = [];
+  for (const line of String(fields.pergunta || "").split(/\r?\n/)) {
+    const enc = line.match(/^\s*encadeia_com\s*:\s*(.+)$/i);
+    if (enc) {
+      if (!fields.encadeia_com || String(fields.encadeia_com).trim() === "") {
+        fields.encadeia_com = enc[1].trim();
+      }
+      continue;
+    }
+    if (PR_EMBEDDED_LINE_RE.test(line)) {
+      continue;
+    }
+    perguntaLines.push(line);
+  }
+  fields.pergunta = perguntaLines.join("\n").trim();
   return fields;
 }
 
@@ -145,7 +176,7 @@ function normalizeFotoEnunciadoBasename(raw, id) {
 
 function parsePrBlockToQuestion(block, index) {
   const id = `Q${index + 1}`;
-  const f = parsePrFields(block);
+  const f = repairPrFields(parsePrFields(block));
 
   const tipo = normalizeTipo(f.tipo);
   if (!tipo || !TIPOS.has(tipo)) {

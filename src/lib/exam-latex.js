@@ -94,7 +94,7 @@ function buildCursoSemestreInline(meta) {
 }
 
 function texPerguntaComPeso(pergunta, pesoResolved, stemMultilineSkip = "0.38em", withWeight = true) {
-  const raw = String(pergunta || "").replace(/\s+$/, "");
+  const raw = stripMetadataLinesFromPergunta(pergunta);
   const w = withWeight && pesoResolved > 0 ? ` ${formatExamWeight(pesoResolved)}` : "";
   if (!raw.trim()) {
     return w.trim();
@@ -149,9 +149,27 @@ function buildExamNumberMap(orderedQuestions) {
   return map;
 }
 
+function stripMetadataLinesFromPergunta(pergunta) {
+  const lines = [];
+  for (const line of String(pergunta || "").split(/\r?\n/)) {
+    if (/^\s*encadeia_com\s*:/i.test(line)) {
+      continue;
+    }
+    if (
+      /^\s*(eh_opcional|apenas_renderizar_sozinha|peso|linhas|resposta|opcoes|combinacoes|tipo|discursiva_em_colunas)\s*:/i.test(
+        line
+      )
+    ) {
+      continue;
+    }
+    lines.push(line);
+  }
+  return lines.join("\n").replace(/\s+$/, "");
+}
+
 function buildTextoImagemTex(q) {
   const foto = buildFotoEnunciadoTex(q);
-  const raw = String(q.pergunta || "").replace(/\s+$/, "");
+  const raw = stripMetadataLinesFromPergunta(q.pergunta);
   const textPart = raw.trim()
     ? `{${STEM_BODY_FONT_CMD}\\noindent\n${markdownTextToTexBlock(raw, "0.32em")}\n}\\par`
     : "";

@@ -203,6 +203,32 @@ function isQuestionBlock(block) {
   return true;
 }
 
+const PR_CONTINUATION_FIELDS = new Set([
+  "opcoes",
+  "combinacoes",
+  "coluna_direita",
+  "direita",
+  "linhas",
+  "resposta",
+  "eh_opcional",
+  "apenas_renderizar_sozinha",
+  "discursiva_em_colunas",
+  "peso",
+  "foto_enunciado",
+  "encadeia_com"
+]);
+
+function blockFirstLineKey(block) {
+  const line = String(block || "")
+    .split(/\r?\n/)
+    .find((l) => l.trim() !== "");
+  if (!line) {
+    return null;
+  }
+  const m = line.match(/^([\w_]+)\s*:/);
+  return m ? m[1].toLowerCase() : null;
+}
+
 function mergePrQuestionContinuationBlocks(blocks) {
   const merged = [];
   for (const block of blocks) {
@@ -210,11 +236,11 @@ function mergePrQuestionContinuationBlocks(blocks) {
     if (!t) {
       continue;
     }
-    const hasPergunta = /^\s*pergunta\s*:/im.test(t);
-    const startsWithContinuation = /^\s*(tipo|opcoes|combinacoes|coluna_direita|direita|linhas|resposta|eh_opcional|apenas_renderizar_sozinha|discursiva_em_colunas|peso|foto_enunciado|encadeia_com)\s*:/im.test(
-      t
-    );
-    if (merged.length > 0 && !hasPergunta && startsWithContinuation) {
+    const firstKey = blockFirstLineKey(t);
+    const mergeIntoPrevious =
+      merged.length > 0 &&
+      (firstKey === null || (firstKey && PR_CONTINUATION_FIELDS.has(firstKey)));
+    if (mergeIntoPrevious) {
       merged[merged.length - 1] = `${merged[merged.length - 1]}\n\n${t}`;
     } else {
       merged.push(t);
@@ -245,7 +271,9 @@ function parseSourceDocument(markdownContent) {
 
   const questions = questionBlocks.map((text, index) => {
     let q;
-    if (isPrBlock(text)) {
+    const prFormat =
+      isPrBlock(text) || /(?:^|\n)\s*(tipo|pergunta)\s*:/im.test(String(text || ""));
+    if (prFormat) {
       q = parsePrBlockToQuestion(text, index);
     } else {
       q = legacyBlockToQuestion(text, index);
