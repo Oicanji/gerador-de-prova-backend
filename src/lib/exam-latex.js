@@ -1,4 +1,6 @@
 const path = require("node:path");
+const { escapeLatexLiteral, markdownTextToTexBlock, markdownTextToTexParagraph } = require("./markdown-tex");
+const { isExamQuestion, isScorableQuestion } = require("./question-utils");
 
 function escapeLatex(text) {
   return text
@@ -91,20 +93,22 @@ function buildCursoSemestreInline(meta) {
   return "\\textbf{NOME\\_DO\\_CURSO}\\,---\\,\\textbf{SEMESTRE}";
 }
 
-function texPerguntaComPeso(pergunta, pesoResolved, stemMultilineSkip = "0.38em") {
+function texPerguntaComPeso(pergunta, pesoResolved, stemMultilineSkip = "0.38em", withWeight = true) {
   const raw = String(pergunta || "").replace(/\s+$/, "");
-  const w = formatExamWeight(pesoResolved);
+  const w = withWeight && pesoResolved > 0 ? ` ${formatExamWeight(pesoResolved)}` : "";
   if (!raw.trim()) {
-    return w;
+    return w.trim();
   }
-  const lines = raw.split(/\r?\n/);
-  const esc = lines.map((line) => escapeLatex(line.replace(/\s+$/, "")));
-  if (esc.length === 1) {
-    return `${esc[0]} ${w}`;
+  const body = markdownTextToTexBlock(raw, stemMultilineSkip);
+  if (!w) {
+    return body;
   }
-  const last = esc.length - 1;
-  esc[last] = `${esc[last]} ${w}`;
-  return esc.join(` \\\\[${stemMultilineSkip}]\n`);
+  if (body.includes(`\\\\[${stemMultilineSkip}]`)) {
+    const parts = body.split(` \\\\[${stemMultilineSkip}]\n`);
+    parts[parts.length - 1] = `${parts[parts.length - 1]}${w}`;
+    return parts.join(` \\\\[${stemMultilineSkip}]\n`);
+  }
+  return `${body}${w}`;
 }
 
 function buildFotoEnunciadoTex(q) {
@@ -130,11 +134,37 @@ function buildFotoEnunciadoTex(q) {
 }
 
 function texParagraph(text) {
-  return text
-    .split(/\r?\n/)
-    .map((line) => escapeLatex(line.trimEnd()))
-    .filter((line, i, arr) => line.length > 0 || i < arr.length - 1)
-    .join(" \\\\[0.32em]\n");
+  return markdownTextToTexParagraph(text);
+}
+
+function buildExamNumberMap(orderedQuestions) {
+  const map = new Map();
+  let n = 0;
+  for (let i = 0; i < orderedQuestions.length; i += 1) {
+    if (isScorableQuestion(orderedQuestions[i])) {
+      n += 1;
+      map.set(i, n);
+    }
+  }
+  return map;
+}
+
+function buildTextoImagemTex(q) {
+  const foto = buildFotoEnunciadoTex(q);
+  const raw = String(q.pergunta || "").replace(/\s+$/, "");
+  const textPart = raw.trim()
+    ? `{${STEM_BODY_FONT_CMD}\\noindent\n${markdownTextToTexBlock(raw, "0.32em")}\n}\\par`
+    : "";
+  return [
+    "\\vspace{0.12\\baselineskip}%",
+    "\\noindent\\begin{minipage}{\\linewidth}",
+    textPart,
+    foto,
+    "\\end{minipage}",
+    "\\vspace{0.2\\baselineskip}%"
+  ]
+    .filter((s) => s !== "")
+    .join("\n");
 }
 
 function buildChoices(opcoes) {
@@ -227,10 +257,16 @@ function joinComE(partes) {
   return `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}`;
 }
 
-function buildQuestoesDescritivasTrecho(orderedQuestions) {
-  const nums = orderedQuestions
-    .map((q, i) => (q.tipo === "discursiva" ? i + 1 : null))
-    .filter((n) => n != null);
+function buildQuestoesDescritivasTrecho(orderedQuestions, examNumByIndex) {
+  const nums = [];
+  for (let i = 0; i < orderedQuestions.length; i += 1) {
+    if (orderedQuestions[i].tipo === "discursiva") {
+      const n = examNumByIndex.get(i);
+      if (n != null) {
+        nums.push(n);
+      }
+    }
+  }
   if (nums.length === 0) {
     return "";
   }
@@ -250,7 +286,7 @@ function buildGabaritoObjectiveTable(slice, fmt) {
     return "";
   }
   const col = `|${Array.from({ length: n }, () => "K").join("|")}|`;
-  const nums = slice.map((o) => `{${GAB_NUM_FONT_CMD}\\bfseries ${fmt(o.num)}}`).join(" & ");
+  const nums = slice.map((o) => `{${GAB_NUM_FONT_CMD}\\bfseries ${fmt(o)}}`).join(" & ");
   const blanks = slice.map(() => "\\rule{0pt}{1.58em}").join(" & ");
   return [
     "    \\setlength{\\arrayrulewidth}{0.4pt}%",
@@ -273,12 +309,19 @@ function buildGabaritoObjectiveTable(slice, fmt) {
 }
 
 function buildGabaritoSheet(orderedQuestions) {
-  const totalN = orderedQuestions.length;
-  const fmt = (n) => formatGabaritoNum(n, totalN);
-  const cells = orderedQuestions.map((q, idx) => ({ num: idx + 1 }));
-  if (cells.length === 0) {
+  const examNumByIndex = buildExamNumberMap(orderedQuestions);
+  const cells = [];
+  for (let i = 0; i < orderedQuestions.length; i += 1) {
+    const n = examNumByIndex.get(i);
+    if (n != null && isExamQuestion(orderedQuestions[i])) {
+      cells.push({ num: n });
+    }
+  }
+  const totalN = cells.length;
+  if (totalN === 0) {
     return "";
   }
+  const fmt = (cell) => formatGabaritoNum(cell.num, totalN);
 
   const tabularBlocks = [];
   for (let i = 0; i < cells.length; i += GABARITO_COLS) {
@@ -286,7 +329,7 @@ function buildGabaritoSheet(orderedQuestions) {
     tabularBlocks.push(buildGabaritoObjectiveTable(slice, fmt));
   }
 
-  const discTrecho = buildQuestoesDescritivasTrecho(orderedQuestions);
+  const discTrecho = buildQuestoesDescritivasTrecho(orderedQuestions, examNumByIndex);
   const tabelasBloco = tabularBlocks.join("\n    \\vspace{0.12em}%\n");
 
   return [
@@ -302,6 +345,9 @@ function buildGabaritoSheet(orderedQuestions) {
 }
 
 function buildQuestionTex(q, pesoResolved, questionNum) {
+  if (q.tipo === "texto-imagem") {
+    return buildTextoImagemTex(q);
+  }
   const stemBody = texPerguntaComPeso(q.pergunta, pesoResolved);
   const stemFmt = `{${STEM_BODY_FONT_CMD}\\bfseries\n${stemBody}\n}`;
   const foto = buildFotoEnunciadoTex(q);
@@ -351,6 +397,10 @@ function isPairableObjective(q) {
   return q.tipo === "multipla-escolha" || q.tipo === "verdadeiro_falso" || q.tipo === "relacionar";
 }
 
+function isPairableDiscursive(q) {
+  return q.tipo === "discursiva" && q.discursiva_em_colunas;
+}
+
 function canPairAt(i, orderedQuestions) {
   const n = orderedQuestions.length;
   if (i >= n - 1) {
@@ -359,6 +409,22 @@ function canPairAt(i, orderedQuestions) {
   const q0 = orderedQuestions[i];
   const q1 = orderedQuestions[i + 1];
   if (!isPairableObjective(q0) || !isPairableObjective(q1)) {
+    return false;
+  }
+  if (q0.apenas_renderizar_sozinha || q1.apenas_renderizar_sozinha) {
+    return false;
+  }
+  return true;
+}
+
+function canPairDiscursiveAt(i, orderedQuestions) {
+  const n = orderedQuestions.length;
+  if (i >= n - 1) {
+    return false;
+  }
+  const q0 = orderedQuestions[i];
+  const q1 = orderedQuestions[i + 1];
+  if (!isPairableDiscursive(q0) || !isPairableDiscursive(q1)) {
     return false;
   }
   if (q0.apenas_renderizar_sozinha || q1.apenas_renderizar_sozinha) {
@@ -390,6 +456,49 @@ function buildManualObjectiveColumnTex(q, pesoResolved, questionNum) {
   throw new Error(`Tipo manual nao suportado: ${q.tipo}`);
 }
 
+function buildManualDiscursiveColumnTex(q, pesoResolved, questionNum) {
+  const discLabel = `prova-disc-${questionNum}`;
+  const stemBody = texPerguntaComPeso(q.pergunta, pesoResolved, "0.28em");
+  const stemFmt = `{${STEM_BODY_FONT_CMD}\\bfseries\n${stemBody}\n}`;
+  const foto = buildFotoEnunciadoTex(q);
+  return [
+    MC_COL_TOP_SKIP,
+    "\\noindent",
+    "\\addtocounter{numquestions}{1}%",
+    "\\refstepcounter{question}%",
+    `\\label{question@${questionNum}}%`,
+    `\\noindent\\textbf{\\thequestion.}\\hspace{0.35em}${stemFmt}`,
+    foto ? `\\par\n${foto}` : "",
+    `\\label{${discLabel}}`,
+    STEM_TO_BODY_VSPACE_DISC,
+    "\\noindent\\begin{minipage}{\\linewidth}",
+    `\\espacodiscursivo{${q.linhas}}`,
+    "\\par",
+    "\\end{minipage}"
+  ]
+    .filter((s) => s !== "")
+    .join("\n");
+}
+
+function buildPairedDiscursiveMulticolBlock(q1, w1, n1, q2, w2, n2, addHruleAfter) {
+  const col1 = buildManualDiscursiveColumnTex(q1, w1, n1);
+  const col2 = buildManualDiscursiveColumnTex(q2, w2, n2);
+  const lines = [
+    PAIR_MULTICOL_NEEDSPACE,
+    "\\noindent\\begin{paracol}{2}%",
+    col1,
+    "",
+    "\\switchcolumn",
+    "",
+    col2,
+    "\\end{paracol}"
+  ];
+  if (addHruleAfter) {
+    lines.push("\\SeparadorEntreQuestoesLargas");
+  }
+  return lines.join("\n");
+}
+
 function buildPairedMulticolBlock(q1, w1, n1, q2, w2, n2, addHruleAfter) {
   const col1 = buildManualObjectiveColumnTex(q1, w1, n1);
   const col2 = buildManualObjectiveColumnTex(q2, w2, n2);
@@ -414,9 +523,17 @@ function buildQuestionsRowsTex(orderedQuestions, weightsResolved) {
   if (n === 0) {
     return "\\begin{questions}\n\n\\end{questions}";
   }
+  const examNumByIndex = buildExamNumberMap(orderedQuestions);
   const chunks = [];
   for (let i = 0; i < n; ) {
-    if (canPairAt(i, orderedQuestions)) {
+    const q = orderedQuestions[i];
+    if (q.tipo === "texto-imagem") {
+      chunks.push({ type: "block", i0: i });
+      i += 1;
+    } else if (canPairDiscursiveAt(i, orderedQuestions)) {
+      chunks.push({ type: "pair_disc", i0: i, i1: i + 1 });
+      i += 2;
+    } else if (canPairAt(i, orderedQuestions)) {
       chunks.push({ type: "pair", i0: i, i1: i + 1 });
       i += 2;
     } else {
@@ -432,13 +549,30 @@ function buildQuestionsRowsTex(orderedQuestions, weightsResolved) {
   const gapEntreLargas = "\n\\SeparadorEntreQuestoesLargas\n";
   const gapEntreOrfas = "\n\\SeparadorEntreOrfas\n";
 
+  function closeQuestionsIfOpen(singleParaPar) {
+    if (!questionsOpen) {
+      return;
+    }
+    parts.push("\n\\end{questions}\n");
+    if (singleParaPar) {
+      parts.push("\n\\SeparadorEntreQuestoesLargas\n");
+    }
+    parts.push("\\par\\vspace{-0.06\\baselineskip}\\par");
+    questionsOpen = false;
+  }
+
   for (let k = 0; k < chunks.length; k++) {
     const ch = chunks[k];
-    const singleParaPar = k > 0 && chunks[k - 1].type === "single" && ch.type === "pair";
+    const singleParaPar =
+      k > 0 &&
+      (chunks[k - 1].type === "single" || chunks[k - 1].type === "block") &&
+      (ch.type === "pair" || ch.type === "pair_disc");
     if (k > 0) {
       const prev = chunks[k - 1];
-      if (!singleParaPar) {
-        const ambosPar = prev.type === "pair" && ch.type === "pair";
+      if (ch.type === "block" || prev.type === "block") {
+        parts.push(gapEntreLargas);
+      } else if (!singleParaPar) {
+        const ambosPar = (prev.type === "pair" || prev.type === "pair_disc") && (ch.type === "pair" || ch.type === "pair_disc");
         const ambasOrfas = prev.type === "single" && ch.type === "single";
         if (ambosPar) {
           parts.push(gapAposParAntesPar);
@@ -449,45 +583,68 @@ function buildQuestionsRowsTex(orderedQuestions, weightsResolved) {
         }
       }
     }
-    if (ch.type === "pair") {
-      if (questionsOpen) {
-        parts.push("\n\\end{questions}\n");
-        if (singleParaPar) {
-          parts.push("\n\\SeparadorEntreQuestoesLargas\n");
-        }
-        parts.push("\\par\\vspace{-0.06\\baselineskip}\\par");
-        questionsOpen = false;
-      }
-      const n1 = ch.i0 + 1;
-      const n2 = ch.i1 + 1;
-      const nextCh = k + 1 < chunks.length ? chunks[k + 1] : null;
-      const addHruleAposMulticolPar = nextCh != null && nextCh.type === "pair";
-      parts.push(`\\setcounter{question}{${lastQuestionNum}}%\n`);
-      parts.push(
-        buildPairedMulticolBlock(
-          orderedQuestions[ch.i0],
-          weightsResolved[ch.i0],
-          n1,
-          orderedQuestions[ch.i1],
-          weightsResolved[ch.i1],
-          n2,
-          addHruleAposMulticolPar
-        )
-      );
-      lastQuestionNum = n2;
-    } else {
-      if (!questionsOpen) {
-        parts.push("\\begin{questions}");
-        if (lastQuestionNum > 0) {
-          parts.push(`\n\\setcounter{question}{${lastQuestionNum}}`);
-        }
-        parts.push("\n");
-        questionsOpen = true;
-      }
-      const idx = ch.i0;
-      parts.push(buildQuestionTex(orderedQuestions[idx], weightsResolved[idx], idx + 1));
-      lastQuestionNum = idx + 1;
+
+    if (ch.type === "block") {
+      closeQuestionsIfOpen(false);
+      parts.push(buildTextoImagemTex(orderedQuestions[ch.i0]));
+      continue;
     }
+
+    if (ch.type === "pair" || ch.type === "pair_disc") {
+      closeQuestionsIfOpen(singleParaPar);
+      const n1 = examNumByIndex.get(ch.i0);
+      const n2 = examNumByIndex.get(ch.i1);
+      const nextCh = k + 1 < chunks.length ? chunks[k + 1] : null;
+      const addHruleAposMulticolPar =
+        nextCh != null && (nextCh.type === "pair" || nextCh.type === "pair_disc");
+      parts.push(`\\setcounter{question}{${lastQuestionNum}}%\n`);
+      if (ch.type === "pair_disc") {
+        parts.push(
+          buildPairedDiscursiveMulticolBlock(
+            orderedQuestions[ch.i0],
+            weightsResolved[ch.i0],
+            n1,
+            orderedQuestions[ch.i1],
+            weightsResolved[ch.i1],
+            n2,
+            addHruleAposMulticolPar
+          )
+        );
+      } else {
+        parts.push(
+          buildPairedMulticolBlock(
+            orderedQuestions[ch.i0],
+            weightsResolved[ch.i0],
+            n1,
+            orderedQuestions[ch.i1],
+            weightsResolved[ch.i1],
+            n2,
+            addHruleAposMulticolPar
+          )
+        );
+      }
+      lastQuestionNum = n2;
+      continue;
+    }
+
+    const idx = ch.i0;
+    const qSingle = orderedQuestions[idx];
+    if (qSingle.tipo === "texto-imagem") {
+      closeQuestionsIfOpen(false);
+      parts.push(buildTextoImagemTex(qSingle));
+      continue;
+    }
+    if (!questionsOpen) {
+      parts.push("\\begin{questions}");
+      if (lastQuestionNum > 0) {
+        parts.push(`\n\\setcounter{question}{${lastQuestionNum}}`);
+      }
+      parts.push("\n");
+      questionsOpen = true;
+    }
+    const qNum = examNumByIndex.get(idx);
+    parts.push(buildQuestionTex(qSingle, weightsResolved[idx], qNum));
+    lastQuestionNum = qNum;
   }
 
   if (questionsOpen) {
@@ -575,7 +732,8 @@ function buildExamLatex({
   orderedQuestions,
   weightsResolved,
   texOutputDir,
-  modelosusepackageRel
+  modelosusepackageRel,
+  incluirGabarito = true
 }) {
   const modelosUsepackage =
     modelosusepackageRel != null && String(modelosusepackageRel).trim() !== ""
@@ -614,7 +772,7 @@ function buildExamLatex({
 
   const questionsTex = buildQuestionsRowsTex(orderedQuestions, weightsResolved);
 
-  const gabaritoTex = buildGabaritoSheet(orderedQuestions);
+  const gabaritoTex = incluirGabarito ? buildGabaritoSheet(orderedQuestions) : "";
 
   const orientacao =
     meta.orientacoes && meta.orientacoes.trim()
@@ -746,8 +904,9 @@ function buildExamLatex({
     `{${DOC_AUX_FONT_CMD}\\textbf{Orienta\\c{c}\\~oes:} ${orientacao}}\\par`,
     "\\endgroup",
     "\\vspace{0.34\\baselineskip}%",
-    gabaritoTex,
-    "\\vspace{0.4\\baselineskip}%",
+    ...(gabaritoTex
+      ? [gabaritoTex, "\\vspace{0.4\\baselineskip}%"]
+      : []),
     "\\begingroup",
     "\\setlength{\\parskip}{0pt}%",
     questionsTex,

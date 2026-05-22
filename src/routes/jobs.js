@@ -3,7 +3,7 @@ const path = require("node:path");
 const express = require("express");
 const multer = require("multer");
 const config = require("../config");
-const { parseQtdArg } = require("../generate/generate-provas");
+const { parseQtdArg, parseSimNaoArg } = require("../generate/generate-provas");
 const { requireApiKey } = require("../middleware/api-key");
 const {
   createJob,
@@ -43,7 +43,24 @@ router.post("/jobs", requireApiKey, upload.single("file"), (req, res) => {
     });
   }
 
-  const job = createJob({ quantidade, originalName });
+  let randomizarOrdem = true;
+  let gerarGabarito = true;
+  try {
+    randomizarOrdem = parseSimNaoArg(
+      req.body.randomizar || req.query.randomizar,
+      true,
+      "randomizar"
+    );
+    gerarGabarito = parseSimNaoArg(
+      req.body.gerar_gabarito || req.query.gerar_gabarito,
+      true,
+      "gerar_gabarito"
+    );
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+
+  const job = createJob({ quantidade, originalName, randomizarOrdem, gerarGabarito });
   const prPath = path.join(job.jobDir, "input.pr");
   fs.writeFileSync(prPath, req.file.buffer);
 
@@ -56,6 +73,8 @@ router.post("/jobs", requireApiKey, upload.single("file"), (req, res) => {
         outputDir: job.jobDir,
         quantity: quantidade,
         sourceLabel: originalName,
+        randomizarOrdem: job.randomizarOrdem,
+        gerarGabarito: job.gerarGabarito,
         onProgress: (progress) => {
           updateJob(job.id, { progress });
         }

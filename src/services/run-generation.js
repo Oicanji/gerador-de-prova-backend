@@ -4,12 +4,22 @@ const { generateProvasToOutput } = require("../generate/generate-provas");
 const { compileTexToPdf } = require("./latex-compile");
 const { mergePdfsEmUm } = require("./merge-pdfs");
 
-async function runGenerationJob({ prBuffer, outputDir, quantity, sourceLabel, onProgress }) {
+async function runGenerationJob({
+  prBuffer,
+  outputDir,
+  quantity,
+  sourceLabel,
+  randomizarOrdem = true,
+  gerarGabarito = true,
+  onProgress
+}) {
   const { generated, prUpdated } = generateProvasToOutput({
     prBuffer,
     outputDir,
     quantity,
-    sourceLabel
+    sourceLabel,
+    randomizarOrdem,
+    gerarGabarito
   });
 
   const pdfPaths = [];

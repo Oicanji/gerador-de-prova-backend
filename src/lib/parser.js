@@ -211,7 +211,7 @@ function mergePrQuestionContinuationBlocks(blocks) {
       continue;
     }
     const hasPergunta = /^\s*pergunta\s*:/im.test(t);
-    const startsWithContinuation = /^\s*(tipo|opcoes|combinacoes|coluna_direita|direita|linhas|resposta|eh_opcional|apenas_renderizar_sozinha|peso|foto_enunciado|encadeia_com)\s*:/im.test(
+    const startsWithContinuation = /^\s*(tipo|opcoes|combinacoes|coluna_direita|direita|linhas|resposta|eh_opcional|apenas_renderizar_sozinha|discursiva_em_colunas|peso|foto_enunciado|encadeia_com)\s*:/im.test(
       t
     );
     if (merged.length > 0 && !hasPergunta && startsWithContinuation) {
@@ -244,10 +244,14 @@ function parseSourceDocument(markdownContent) {
   }
 
   const questions = questionBlocks.map((text, index) => {
+    let q;
     if (isPrBlock(text)) {
-      return parsePrBlockToQuestion(text, index);
+      q = parsePrBlockToQuestion(text, index);
+    } else {
+      q = legacyBlockToQuestion(text, index);
     }
-    return legacyBlockToQuestion(text, index);
+    q.ordem_fonte = index;
+    return q;
   });
 
   for (const q of questions) {

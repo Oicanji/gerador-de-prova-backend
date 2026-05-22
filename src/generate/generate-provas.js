@@ -12,7 +12,7 @@ const { buildGenerationHash } = require("../lib/hash");
 const { mulberry32, seedStringToUint32 } = require("../lib/rng");
 const { buildExamLatex } = require("../lib/exam-latex");
 const { generateProvaRef, normalizeProvaRef } = require("../lib/prova-ref");
-const { drawExamPlan } = require("../lib/exam-plan");
+const { drawExamPlan, EncadeamentoBatchCycler } = require("../lib/exam-plan");
 
 function copyDirSync(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
@@ -32,10 +32,31 @@ function prepareJobAssets(outputDir) {
   copyDirSync(config.recursosDir, path.join(outputDir, "recursos"));
 }
 
-function tryGenerateUnique(allQuestions, existingHashes) {
+function parseSimNaoArg(rawValue, defaultValue = true, fieldName = "opcao") {
+  if (rawValue === undefined || rawValue === null || String(rawValue).trim() === "") {
+    return defaultValue;
+  }
+  const s = String(rawValue)
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (s === "sim" || s === "s" || s === "yes" || s === "true" || s === "1") {
+    return true;
+  }
+  if (s === "nao" || s === "n" || s === "no" || s === "false" || s === "0") {
+    return false;
+  }
+  throw new Error(`${fieldName} invalido: "${rawValue}" (use sim ou nao).`);
+}
+
+function tryGenerateUnique(allQuestions, existingHashes, encadeamentoCycler, options) {
   const seed = crypto.randomBytes(16).toString("hex");
   const rng = mulberry32(seedStringToUint32(seed));
-  const plan = drawExamPlan(allQuestions, rng);
+  const plan = drawExamPlan(allQuestions, rng, {
+    randomizarOrdem: options.randomizarOrdem,
+    encadeamentoCycler
+  });
   const hash = buildGenerationHash({
     orderIds: plan.orderIds,
     selectedOptionalIds: plan.selectedOptionalIds
@@ -49,7 +70,8 @@ function tryGenerateUnique(allQuestions, existingHashes) {
     orderIds: plan.orderIds,
     selectedOptionalIds: plan.selectedOptionalIds,
     orderedQuestions: plan.orderedQuestions,
-    weightsResolved: plan.weightsResolved
+    weightsResolved: plan.weightsResolved,
+    encadeamentoEscolhas: plan.encadeamentoEscolhas || {}
   };
 }
 
@@ -68,13 +90,21 @@ function writeExamTex(outputDir, examName, texContent) {
   fs.writeFileSync(path.join(outputDir, `${examName}.tex`), texContent, "utf8");
 }
 
-function generateProvasToOutput({ prBuffer, outputDir, quantity, sourceLabel }) {
+function generateProvasToOutput({
+  prBuffer,
+  outputDir,
+  quantity,
+  sourceLabel,
+  randomizarOrdem = true,
+  gerarGabarito = true
+}) {
   const { content } = readPrFromBuffer(prBuffer, sourceLabel);
   const { meta, questions: allQuestions } = parseSourceDocument(content);
   fs.mkdirSync(outputDir, { recursive: true });
   prepareJobAssets(outputDir);
   extractFotosFromPrBuffer(prBuffer, outputDir);
 
+  const encadeamentoCycler = new EncadeamentoBatchCycler(allQuestions);
   const generatedHashes = new Set();
   const provaRefsUsed = new Set();
   const generated = [];
@@ -83,7 +113,9 @@ function generateProvasToOutput({ prBuffer, outputDir, quantity, sourceLabel }) 
 
   while (generated.length < quantity && attempts < maxAttempts) {
     attempts += 1;
-    const result = tryGenerateUnique(allQuestions, generatedHashes);
+    const result = tryGenerateUnique(allQuestions, generatedHashes, encadeamentoCycler, {
+      randomizarOrdem
+    });
     if (!result) {
       continue;
     }
@@ -98,7 +130,8 @@ function generateProvasToOutput({ prBuffer, outputDir, quantity, sourceLabel }) 
       provaRef,
       orderedQuestions: result.orderedQuestions,
       weightsResolved: result.weightsResolved,
-      texOutputDir: outputDir
+      texOutputDir: outputDir,
+      incluirGabarito: gerarGabarito
     });
     writeExamTex(outputDir, examName, tex);
     generated.push({
@@ -108,7 +141,8 @@ function generateProvasToOutput({ prBuffer, outputDir, quantity, sourceLabel }) 
       seed: result.seed,
       orderIds: result.orderIds,
       selectedOptionalIds: result.selectedOptionalIds,
-      weightsResolved: result.weightsResolved
+      weightsResolved: result.weightsResolved,
+      encadeamentoEscolhas: result.encadeamentoEscolhas
     });
   }
 
@@ -120,7 +154,13 @@ function generateProvasToOutput({ prBuffer, outputDir, quantity, sourceLabel }) 
   for (const item of generated) {
     const k = normalizeProvaRef(item.provaRef);
     if (k) {
-      byRef[k] = { hash: item.hash, seed: item.seed };
+      byRef[k] = {
+        hash: item.hash,
+        seed: item.seed,
+        orderIds: item.orderIds,
+        selectedOptionalIds: item.selectedOptionalIds,
+        encadeamentoEscolhas: item.encadeamentoEscolhas || {}
+      };
     }
   }
   const generatedAt = new Date().toISOString();
@@ -131,7 +171,9 @@ function generateProvasToOutput({ prBuffer, outputDir, quantity, sourceLabel }) 
     byRef,
     lastRun: {
       count: Object.keys(byRef).length,
-      generatedAt
+      generatedAt,
+      randomizar_ordem: randomizarOrdem,
+      gerar_gabarito: gerarGabarito
     }
   };
 
@@ -154,5 +196,6 @@ function generateProvasToOutput({ prBuffer, outputDir, quantity, sourceLabel }) 
 module.exports = {
   generateProvasToOutput,
   parseQtdArg,
+  parseSimNaoArg,
   prepareJobAssets
 };

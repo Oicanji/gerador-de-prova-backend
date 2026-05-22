@@ -1,38 +1,14 @@
 const { shuffleInPlace, sampleK } = require("./rng");
 const { normalizeWeights } = require("./weights");
+const { isScorableQuestion } = require("./question-utils");
+const { buildEncadeamentoAdjacency, normalizeEncadeiaRef } = require("./encadeamento-graph");
+const { EncadeamentoBatchCycler } = require("./encadeamento-cycler");
 
-function normalizeEncadeiaRef(raw) {
-  if (raw == null || String(raw).trim() === "") {
-    return null;
-  }
-  const m = /^Q\s*(\d+)$/i.exec(String(raw).trim());
-  if (!m) {
-    return null;
-  }
-  return `Q${parseInt(m[1], 10)}`;
-}
-
-function buildEncadeamentoAdjacency(questions) {
-  const ids = new Set(questions.map((q) => q.id));
-  const adj = new Map();
-  for (const q of questions) {
-    adj.set(q.id, []);
-  }
-  for (const q of questions) {
-    const target = normalizeEncadeiaRef(q.encadeia_com);
-    if (!target || target === q.id || !ids.has(target)) {
-      continue;
-    }
-    adj.get(q.id).push(target);
-    adj.get(target).push(q.id);
-  }
-  return adj;
-}
-
-function filterPoolAfterEncadeamento(allQuestions, rng) {
+function filterPoolAfterEncadeamento(allQuestions, rng, encadeamentoCycler) {
   const adj = buildEncadeamentoAdjacency(allQuestions);
   const excluded = new Set();
   const visited = new Set();
+  const encadeamentoEscolhas = {};
   for (const q of allQuestions) {
     if (visited.has(q.id)) {
       continue;
@@ -52,7 +28,17 @@ function filterPoolAfterEncadeamento(allQuestions, rng) {
       }
     }
     if (compIds.length >= 2) {
-      const keep = compIds[Math.floor(rng() * compIds.length)];
+      const cycler = encadeamentoCycler || null;
+      const keep = cycler
+        ? cycler.pickForComponent(compIds, rng)
+        : compIds[Math.floor(rng() * compIds.length)];
+      if (cycler) {
+        const key = compIds
+          .slice()
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+          .join("|");
+        encadeamentoEscolhas[key] = keep;
+      }
       for (const cid of compIds) {
         if (cid !== keep) {
           excluded.add(cid);
@@ -60,11 +46,28 @@ function filterPoolAfterEncadeamento(allQuestions, rng) {
       }
     }
   }
-  return allQuestions.filter((x) => !excluded.has(x.id));
+  return {
+    pool: allQuestions.filter((x) => !excluded.has(x.id)),
+    encadeamentoEscolhas
+  };
 }
 
-function drawExamPlan(allQuestions, rng) {
-  const pool = filterPoolAfterEncadeamento(allQuestions, rng);
+function sortByOrdemFonte(items) {
+  return items.slice().sort((a, b) => {
+    const oa = a.ordem_fonte != null ? a.ordem_fonte : 0;
+    const ob = b.ordem_fonte != null ? b.ordem_fonte : 0;
+    return oa - ob;
+  });
+}
+
+function drawExamPlan(allQuestions, rng, options = {}) {
+  const randomizarOrdem = options.randomizarOrdem !== false;
+  const encadeamentoCycler = options.encadeamentoCycler || null;
+  const { pool, encadeamentoEscolhas } = filterPoolAfterEncadeamento(
+    allQuestions,
+    rng,
+    encadeamentoCycler
+  );
   const mandatory = pool.filter((q) => !q.eh_opcional);
   const optional = pool.filter((q) => q.eh_opcional);
   const K = Math.ceil(optional.length / 2);
@@ -72,16 +75,30 @@ function drawExamPlan(allQuestions, rng) {
   const selectedOptionalIds = selected
     .map((q) => q.id)
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  const merged = [...mandatory, ...selected];
-  shuffleInPlace(merged, rng);
+  let merged = [...mandatory, ...selected];
+  if (randomizarOrdem) {
+    shuffleInPlace(merged, rng);
+  } else {
+    merged = sortByOrdemFonte(merged);
+  }
   const orderIds = merged.map((q) => q.id);
-  const { weights, warnings } = normalizeWeights(merged);
+  const scorable = merged.filter(isScorableQuestion);
+  const scorableIndices = merged.map((q, i) => (isScorableQuestion(q) ? i : -1)).filter((i) => i >= 0);
+  const { weights: scorableWeights, warnings } = normalizeWeights(scorable);
+  const weightsResolved = merged.map((q, i) => {
+    if (!isScorableQuestion(q)) {
+      return 0;
+    }
+    const idx = scorableIndices.indexOf(i);
+    return scorableWeights[idx] != null ? scorableWeights[idx] : 0;
+  });
   return {
     orderIds,
     selectedOptionalIds,
     orderedQuestions: merged,
-    weightsResolved: weights,
-    warnings
+    weightsResolved,
+    warnings,
+    encadeamentoEscolhas
   };
 }
 
@@ -89,5 +106,6 @@ module.exports = {
   drawExamPlan,
   normalizeEncadeiaRef,
   buildEncadeamentoAdjacency,
-  filterPoolAfterEncadeamento
+  filterPoolAfterEncadeamento,
+  EncadeamentoBatchCycler
 };

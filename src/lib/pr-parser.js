@@ -1,4 +1,10 @@
-const TIPOS = new Set(["multipla-escolha", "discursiva", "verdadeiro_falso", "relacionar"]);
+const TIPOS = new Set([
+  "multipla-escolha",
+  "discursiva",
+  "verdadeiro_falso",
+  "relacionar",
+  "texto-imagem"
+]);
 
 function normalizeTipo(raw) {
   if (!raw) {
@@ -33,6 +39,9 @@ function normalizeTipo(raw) {
     t === "parear"
   ) {
     return "relacionar";
+  }
+  if (t === "texto_imagem" || t === "texto-imagem" || t === "texto" || t === "bloco") {
+    return "texto-imagem";
   }
   return null;
 }
@@ -74,7 +83,11 @@ function splitOpcoes(line) {
 }
 
 function isPrBlock(block) {
-  return /^\s*pergunta\s*:/im.test(block);
+  return (
+    /^\s*pergunta\s*:/im.test(block) ||
+    /^\s*tipo\s*:\s*texto/im.test(block) ||
+    /^\s*tipo\s*:\s*bloco/im.test(block)
+  );
 }
 
 function parsePrFields(block) {
@@ -134,15 +147,19 @@ function parsePrBlockToQuestion(block, index) {
   const id = `Q${index + 1}`;
   const f = parsePrFields(block);
 
-  if (!f.pergunta) {
-    throw new Error(`${id}: campo pergunta e obrigatorio.`);
-  }
-
   const tipo = normalizeTipo(f.tipo);
   if (!tipo || !TIPOS.has(tipo)) {
     throw new Error(
-      `${id}: tipo invalido "${f.tipo}". Use multipla-escolha, discursiva, verdadeiro_falso ou relacionar.`
+      `${id}: tipo invalido "${f.tipo}". Use multipla-escolha, discursiva, verdadeiro_falso, relacionar ou texto-imagem.`
     );
+  }
+
+  const perguntaRaw = f.pergunta != null ? String(f.pergunta) : "";
+  if (tipo !== "texto-imagem" && !perguntaRaw.trim()) {
+    throw new Error(`${id}: campo pergunta e obrigatorio.`);
+  }
+  if (tipo === "texto-imagem" && !perguntaRaw.trim() && !f.foto_enunciado) {
+    throw new Error(`${id}: texto-imagem exige pergunta ou foto_enunciado.`);
   }
 
   let opcoes = null;
@@ -174,13 +191,37 @@ function parsePrBlockToQuestion(block, index) {
       ? f.resposta.trim()
       : null;
 
-  const eh_opcional = normalizeSimNao(f.eh_opcional, false, "eh_opcional");
+  const eh_opcional =
+    tipo === "texto-imagem" ? false : normalizeSimNao(f.eh_opcional, false, "eh_opcional");
   const apenas_renderizar_sozinha = normalizeSimNao(
     f.apenas_renderizar_sozinha,
     false,
     "apenas_renderizar_sozinha"
   );
-  const peso = parsePeso(f.peso);
+  const discursiva_em_colunas = normalizeSimNao(
+    f.discursiva_em_colunas,
+    false,
+    "discursiva_em_colunas"
+  );
+  const peso = tipo === "texto-imagem" ? null : parsePeso(f.peso);
+
+  if (tipo === "texto-imagem") {
+    if (opcoes && opcoes.length > 0) {
+      throw new Error(`${id}: texto-imagem nao deve ter opcoes.`);
+    }
+    if (combinacoes && combinacoes.length > 0) {
+      throw new Error(`${id}: texto-imagem nao deve ter combinacoes.`);
+    }
+    if (linhas) {
+      throw new Error(`${id}: linhas so e permitido para discursiva.`);
+    }
+    if (resposta) {
+      throw new Error(`${id}: texto-imagem nao deve ter resposta.`);
+    }
+    if (f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
+      throw new Error(`${id}: texto-imagem nao suporta encadeia_com.`);
+    }
+  }
 
   if (tipo !== "relacionar" && coluna_direita != null && coluna_direita.length > 0) {
     throw new Error(`${id}: coluna_direita so e permitido para tipo relacionar.`);
@@ -208,6 +249,9 @@ function parsePrBlockToQuestion(block, index) {
     if (linhas) {
       throw new Error(`${id}: linhas so e permitido para discursiva.`);
     }
+    if (discursiva_em_colunas) {
+      throw new Error(`${id}: discursiva_em_colunas so e permitido para discursiva.`);
+    }
   } else if (tipo === "relacionar") {
     if (!opcoes || opcoes.length < 2) {
       throw new Error(
@@ -227,7 +271,10 @@ function parsePrBlockToQuestion(block, index) {
     if (linhas) {
       throw new Error(`${id}: linhas so e permitido para discursiva.`);
     }
-  } else {
+    if (discursiva_em_colunas) {
+      throw new Error(`${id}: discursiva_em_colunas so e permitido para discursiva.`);
+    }
+  } else if (tipo === "multipla-escolha") {
     if (!opcoes || opcoes.length < 2) {
       throw new Error(`${id}: ${tipo} exige pelo menos duas opcoes (separadas por ;).`);
     }
@@ -237,6 +284,11 @@ function parsePrBlockToQuestion(block, index) {
     if (linhas) {
       throw new Error(`${id}: linhas so e permitido para discursiva.`);
     }
+    if (discursiva_em_colunas) {
+      throw new Error(`${id}: discursiva_em_colunas so e permitido para discursiva.`);
+    }
+  } else if (discursiva_em_colunas) {
+    throw new Error(`${id}: discursiva_em_colunas so e permitido para discursiva.`);
   }
 
   let foto_enunciado = null;
@@ -245,13 +297,13 @@ function parsePrBlockToQuestion(block, index) {
   }
 
   let encadeia_com = null;
-  if (f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
+  if (tipo !== "texto-imagem" && f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
     encadeia_com = normalizeEncadeiaComRef(String(f.encadeia_com).trim(), id);
   }
 
   return {
     id,
-    pergunta: f.pergunta,
+    pergunta: perguntaRaw,
     tipo,
     opcoes,
     coluna_direita: tipo === "relacionar" ? coluna_direita : null,
@@ -260,6 +312,7 @@ function parsePrBlockToQuestion(block, index) {
     resposta,
     eh_opcional,
     apenas_renderizar_sozinha,
+    discursiva_em_colunas: tipo === "discursiva" ? discursiva_em_colunas : false,
     peso,
     foto_enunciado,
     encadeia_com

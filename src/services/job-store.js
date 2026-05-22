@@ -7,7 +7,7 @@ const jobs = new Map();
 let workerBusy = false;
 const queue = [];
 
-function createJob({ quantidade, originalName }) {
+function createJob({ quantidade, originalName, randomizarOrdem = true, gerarGabarito = true }) {
   const jobId = uuidv4();
   const jobDir = path.join(config.workDir, "jobs", jobId);
   fs.mkdirSync(jobDir, { recursive: true });
@@ -15,6 +15,8 @@ function createJob({ quantidade, originalName }) {
     id: jobId,
     status: "queued",
     quantidade,
+    randomizarOrdem,
+    gerarGabarito,
     originalName: originalName || "upload.pr",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
