@@ -1,5 +1,4 @@
 const { buildEncadeamentoAdjacency } = require("./encadeamento-graph");
-const { isEncadeavelQuestion } = require("./question-utils");
 
 function componentKey(compIds) {
   return compIds
@@ -24,7 +23,7 @@ class EncadeamentoBatchCycler {
     const adj = buildEncadeamentoAdjacency(allQuestions);
     const visited = new Set();
     for (const q of allQuestions) {
-      if (!isEncadeavelQuestion(q) || visited.has(q.id)) {
+      if (visited.has(q.id)) {
         continue;
       }
       const stack = [q.id];
