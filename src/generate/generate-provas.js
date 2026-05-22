@@ -61,7 +61,8 @@ function tryGenerateUnique(allQuestions, existingHashes, encadeamentoCycler, opt
     orderIds: plan.orderIds,
     selectedOptionalIds: plan.selectedOptionalIds
   });
-  if (existingHashes.has(hash)) {
+  const requireDistinctHash = options.requireDistinctHash !== false;
+  if (requireDistinctHash && existingHashes.has(hash)) {
     return null;
   }
   return {
@@ -114,7 +115,8 @@ function generateProvasToOutput({
   while (generated.length < quantity && attempts < maxAttempts) {
     attempts += 1;
     const result = tryGenerateUnique(allQuestions, generatedHashes, encadeamentoCycler, {
-      randomizarOrdem
+      randomizarOrdem,
+      requireDistinctHash: randomizarOrdem
     });
     if (!result) {
       continue;
@@ -147,7 +149,12 @@ function generateProvasToOutput({
   }
 
   if (generated.length < quantity) {
-    throw new Error(`Nao foi possivel gerar ${quantity} provas unicas com hash distinto.`);
+    const hint = randomizarOrdem
+      ? " Marque questoes como opcionais ou use encadeia_com entre variantes."
+      : "";
+    throw new Error(
+      `Nao foi possivel gerar ${quantity} provas unicas com hash distinto.${hint}`
+    );
   }
 
   const byRef = {};

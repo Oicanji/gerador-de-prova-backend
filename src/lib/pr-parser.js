@@ -218,9 +218,6 @@ function parsePrBlockToQuestion(block, index) {
     if (resposta) {
       throw new Error(`${id}: texto-imagem nao deve ter resposta.`);
     }
-    if (f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
-      throw new Error(`${id}: texto-imagem nao suporta encadeia_com.`);
-    }
   }
 
   if (tipo !== "relacionar" && coluna_direita != null && coluna_direita.length > 0) {
@@ -297,7 +294,7 @@ function parsePrBlockToQuestion(block, index) {
   }
 
   let encadeia_com = null;
-  if (tipo !== "texto-imagem" && f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
+  if (f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
     encadeia_com = normalizeEncadeiaComRef(String(f.encadeia_com).trim(), id);
   }
 
